@@ -1,12 +1,11 @@
-import os, asyncio, requests, edge_tts
+import os, time, asyncio, requests, edge_tts
 from google import genai
 from moviepy.editor import VideoFileClip, AudioFileClip, vfx
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-# 1. Generate Script & SEO Metadata via Gemini
-import time
+# 1. Generate Script & SEO Metadata via Gemini (with auto-retry)
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"].strip())
 prompt = (
     "Write a 45-word viral YouTube Short script about an astonishing science or psychology fact. "
@@ -15,31 +14,35 @@ prompt = (
 )
 
 res = None
-for model_name in ["gemini-3.8-flash", "gemini-3.8-flash-lite", "gemini-3.8-pro"]:
-    try:
-        res = client.models.generate_content(model=model_name, contents=prompt).text.strip()
+for model_name in ["gemini-3.8-flash", "gemini-3.8-flash-lite"]:
+    for attempt in range(3):
+        try:
+            res = client.models.generate_content(model=model_name, contents=prompt).text.strip()
+            break
+        except Exception as e:
+            print(f"{model_name} attempt {attempt + 1} failed: {e}")
+            time.sleep(5)
+    if res:
         break
-    except Exception as e:
-        print(f"{model_name} busy, trying fallback...", e)
-        time.sleep(5)
 
 parts = [x.strip() for x in res.split("|")]
-title, keyword, script = parts[0], parts[1], parts[2]
-
+title = parts[0]
+keyword = parts[1].split()[0]
+script = parts[2]
 
 # 2. Generate Free Neural Voiceover
 async def make_voice():
     await edge_tts.Communicate(script, "en-US-ChristopherNeural").save("voice.mp3")
 asyncio.run(make_voice())
 
-# 3. Fetch HD Stock Video from Pixabay
+# 3. Fetch HD Stock Video from Pixabay (Safe URL parameters)
 pix_key = os.environ["PIXABAY_API_KEY"].strip()
-url = f"https://pixabay.com{pix_key}&q={keyword}&per_page=3"
-v_data = requests.get(url).json()
+api_endpoint = "https://pixabay.com"
+v_data = requests.get(api_endpoint, params={"key": pix_key, "q": keyword, "per_page": 3}).json()
 if not v_data.get("hits"):
-    v_data = requests.get(f"https://pixabay.com{pix_key}&q=nature&per_page=3").json()
-video_url = v_data["hits"]["videos"]["medium"]["url"]
+    v_data = requests.get(api_endpoint, params={"key": pix_key, "q": "nature", "per_page": 3}).json()
 
+video_url = v_data["hits"][0]["videos"]["medium"]["url"]
 open("bg.mp4", "wb").write(requests.get(video_url).content)
 
 # 4. Assemble, Center-Crop to 9:16 & Loop Video
@@ -61,10 +64,10 @@ final.write_videofile("short.mp4", fps=24, codec="libx264", audio_codec="aac")
 # 5. Upload Directly to YouTube
 creds = Credentials(
     None,
-    refresh_token=os.environ["YT_REFRESH_TOKEN"],
+    refresh_token=os.environ["YT_REFRESH_TOKEN"].strip(),
     token_uri="https://googleapis.com",
-    client_id=os.environ["YT_CLIENT_ID"],
-    client_secret=os.environ["YT_CLIENT_SECRET"],
+    client_id=os.environ["YT_CLIENT_ID"].strip(),
+    client_secret=os.environ["YT_CLIENT_SECRET"].strip(),
 )
 youtube = build("youtube", "v3", credentials=creds)
 body = {
@@ -75,9 +78,6 @@ body = {
     },
     "status": {"privacyStatus": "public"}
 }
-youtube.videos().insert(
-    part="snippet,status",
-    body=body,
-    media_body=MediaFileUpload("short.mp4")
-).execute()
+media = MediaFileUpload("short.mp4", chunksize=-1, resumable=True)
+youtube.videos().insert(part="snippet,status", body=body, media_body=media).execute()
 print("SUCCESSFULLY UPLOADED:", title)
