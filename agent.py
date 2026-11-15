@@ -1,24 +1,21 @@
 import os, time, asyncio, edge_tts
-from io import BytesIO
 from PIL import Image, ImageDraw
 
-# Patch Pillow 10+ compatibility for MoviePy 1.0.3
 if not hasattr(Image, "ANTIALIAS"):
     Image.ANTIALIAS = Image.LANCZOS
 
 from google import genai
-from google.genai import types
 from moviepy.editor import ImageClip, AudioFileClip
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-# 1. Generate Script & Image Prompt via Gemini (with auto-retry)
+# 1. Generate Script & Title via Gemini
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"].strip())
 prompt = (
     "Write a 45-word viral YouTube Short script about an astonishing science or psychology fact. "
-    "Return ONLY 3 parts separated by a pipe symbol | : "
-    "Catchy Title with #shorts | Detailed vertical digital art background prompt | Full spoken narration script"
+    "Return ONLY 2 parts separated by a pipe symbol | : "
+    "Catchy Title with #shorts | Full spoken narration script"
 )
 
 res = None
@@ -35,51 +32,44 @@ for model_name in ["gemini-3.8-flash", "gemini-3.8-flash-lite"]:
 
 parts = [x.strip() for x in res.split("|") if x.strip()]
 title = str(parts.pop(0)) if parts else "Mind Blowing Psychology Fact #shorts"
-img_prompt = str(parts.pop(0)) if len(parts) > 1 else "Cinematic dark moody abstract brain neural network glowing light, 9:16 vertical"
 script = str(parts.pop(0)) if parts else title
+print("Generated Title:", title)
 
-# 2. Generate Custom 9:16 Vertical Background (with sleek gradient fallback)
-try:
-    img_result = client.models.generate_images(
-        model="imagen-3.0-generate-002",
-        prompt=img_prompt,
-        config=types.GenerateImagesConfig(number_of_images=1, aspect_ratio="9:16")
-    )
-    gen_img = next(iter(img_result.generated_images))
-    image = Image.open(BytesIO(gen_img.image.image_bytes)).resize((1080, 1920), Image.LANCZOS)
-    image.save("bg.png")
-    print("Generated AI background image.")
-except Exception as e:
-    print("Using sleek gradient background:", e)
-    img = Image.new("RGB", (1080, 1920), (15, 20, 35))
-    draw = ImageDraw.Draw(img)
-    for y in range(1920):
-        r = int(15 + (y / 1920) * 25)
-        g = int(20 + (y / 1920) * 15)
-        b = int(35 + (y / 1920) * 55)
-        draw.line([(0, y), (1080, y)], fill=(r, g, b))
-    img.save("bg.png")
+# 2. Create Clean 1080x1920 Vertical Background
+img = Image.new("RGB", (1080, 1920), (15, 20, 35))
+draw = ImageDraw.Draw(img)
+for y in range(1920):
+    r = int(15 + (y / 1920) * 25)
+    g = int(20 + (y / 1920) * 15)
+    b = int(35 + (y / 1920) * 55)
+    draw.line([(0, y), (1080, y)], fill=(r, g, b))
+img.save("bg.png")
 
-# 3. Generate Free Neural Voiceover
+# 3. Generate Neural Voiceover
 async def make_voice():
     await edge_tts.Communicate(script, "en-US-ChristopherNeural").save("voice.mp3")
 asyncio.run(make_voice())
 
-# 4. Assemble Short (1080x1920)
+# 4. Render 1080x1920 MP4 Short
 audio = AudioFileClip("voice.mp3")
 duration = min(audio.duration, 58.0)
 clip = ImageClip("bg.png").set_duration(duration)
 final = clip.set_audio(audio)
 final.write_videofile("short.mp4", fps=24, codec="libx264", audio_codec="aac")
 
-# 5. Upload Directly to YouTube
+# 5. Authenticate & Upload Directly to YouTube
+token_endpoint = "https://" + "://googleapis.com" + "/token"
+yt_scope = ["https://" + "://googleapis.com" + "/auth/youtube.upload"]
+
 creds = Credentials(
-    None,
+    token=None,
     refresh_token=os.environ["YT_REFRESH_TOKEN"].strip(),
-    token_uri="https://googleapis.com",
+    token_uri=token_endpoint,
     client_id=os.environ["YT_CLIENT_ID"].strip(),
     client_secret=os.environ["YT_CLIENT_SECRET"].strip(),
+    scopes=yt_scope
 )
+
 youtube = build("youtube", "v3", credentials=creds)
 body = {
     "snippet": {
@@ -90,5 +80,5 @@ body = {
     "status": {"privacyStatus": "public"}
 }
 media = MediaFileUpload("short.mp4", chunksize=-1, resumable=True)
-youtube.videos().insert(part="snippet,status", body=body, media_body=media).execute()
-print("SUCCESSFULLY UPLOADED:", title)
+response = youtube.videos().insert(part="snippet,status", body=body, media_body=media).execute()
+print("SUCCESSFULLY UPLOADED VIDEO ID:", response.get("id"))
