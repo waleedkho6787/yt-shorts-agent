@@ -1,16 +1,19 @@
-import os, time, asyncio, requests, edge_tts
+import os, time, asyncio
+from io import BytesIO
+from PIL import Image, ImageDraw
 from google import genai
-from moviepy.editor import VideoFileClip, AudioFileClip, vfx
+from google.genai import types
+from moviepy.editor import ImageClip, AudioFileClip
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
-# 1. Generate Script & SEO Metadata via Gemini (with auto-retry)
+# 1. Generate Script & Image Prompt via Gemini (with auto-retry)
 client = genai.Client(api_key=os.environ["GEMINI_API_KEY"].strip())
 prompt = (
     "Write a 45-word viral YouTube Short script about an astonishing science or psychology fact. "
     "Return ONLY 3 parts separated by a pipe symbol | : "
-    "Catchy Title with #shorts | 1-word visual search keyword | Full spoken narration script"
+    "Catchy Title with #shorts | Detailed vertical digital art background prompt | Full spoken narration script"
 )
 
 res = None
@@ -26,39 +29,47 @@ for model_name in ["gemini-3.8-flash", "gemini-3.8-flash-lite"]:
         break
 
 parts = [x.strip() for x in res.split("|")]
-title = parts[0]
-keyword = parts[1].split()[0]
-script = parts[2]
+title = parts if len(parts) > 0 else "Mind Blowing Psychology Fact #shorts"
+img_prompt = parts if len(parts) > 1 else "Cinematic dark moody abstract brain neural network glowing light, 9:16 vertical"
+script = parts if len(parts) > 2 else parts[-1]
 
-# 2. Generate Free Neural Voiceover
+# 2. Generate Custom 9:16 Vertical Image (with safe built-in fallback)
+try:
+    img_result = client.models.generate_images(
+        model="imagen-3.0-generate-002",
+        prompt=img_prompt,
+        config=types.GenerateImagesConfig(number_of_images=1, aspect_ratio="9:16")
+    )
+    image = Image.open(BytesIO(img_result.generated_images.image.image_bytes))
+    image.save("bg.png")
+    print("Generated AI background image.")
+except Exception as e:
+    print("Imagen unavailable, creating sleek gradient background:", e)
+    img = Image.new("RGB", (1080, 1920), (15, 20, 35))
+    draw = ImageDraw.Draw(img)
+    for y in range(1920):
+        r = int(15 + (y / 1920) * 25)
+        g = int(20 + (y / 1920) * 15)
+        b = int(35 + (y / 1920) * 55)
+        draw.line([(0, y), (1080, y)], fill=(r, g, b))
+    img.save("bg.png")
+
+# 3. Generate Free Neural Voiceover
 async def make_voice():
     await edge_tts.Communicate(script, "en-US-ChristopherNeural").save("voice.mp3")
 asyncio.run(make_voice())
 
-# 3. Fetch HD Stock Video from Pixabay (Safe URL parameters)
-pix_key = os.environ["PIXABAY_API_KEY"].strip()
-api_endpoint = "https://pixabay.com"
-v_data = requests.get(api_endpoint, params={"key": pix_key, "q": keyword, "per_page": 3}).json()
-if not v_data.get("hits"):
-    v_data = requests.get(api_endpoint, params={"key": pix_key, "q": "nature", "per_page": 3}).json()
-
-video_url = v_data["hits"][0]["videos"]["medium"]["url"]
-open("bg.mp4", "wb").write(requests.get(video_url).content)
-
-# 4. Assemble, Center-Crop to 9:16 & Loop Video
+# 4. Animate Image with Smooth Cinematic Zoom & Assemble Short
 audio = AudioFileClip("voice.mp3")
 duration = min(audio.duration, 58.0)
-clip = VideoFileClip("bg.mp4").without_audio()
-if clip.duration < duration:
-    clip = clip.fx(vfx.loop, duration=duration)
-else:
-    clip = clip.subclip(0, duration)
-
-w, h = clip.size
-target_w = int(h * 9 / 16)
-if w > target_w:
-    clip = clip.crop(x_center=w / 2, width=target_w)
-final = clip.resize((1080, 1920)).set_audio(audio)
+clip = (
+    ImageClip("bg.png")
+    .set_duration(duration)
+    .resize((1080, 1920))
+    .resize(lambda t: 1 + 0.04 * (t / duration))
+    .set_position("center")
+)
+final = clip.set_audio(audio)
 final.write_videofile("short.mp4", fps=24, codec="libx264", audio_codec="aac")
 
 # 5. Upload Directly to YouTube
