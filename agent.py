@@ -6,15 +6,26 @@ from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
 
 # 1. Generate Script & SEO Metadata via Gemini
-client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+import time
+client = genai.Client(api_key=os.environ["GEMINI_API_KEY"].strip())
 prompt = (
     "Write a 45-word viral YouTube Short script about an astonishing science or psychology fact. "
     "Return ONLY 3 parts separated by a pipe symbol | : "
     "Catchy Title with #shorts | 1-word visual search keyword | Full spoken narration script"
 )
-res = client.models.generate_content(model="gemini-3.8-flash", contents=prompt).text.strip()
+
+res = None
+for model_name in ["gemini-3.8-flash", "gemini-3.8-flash-lite", "gemini-3.8-pro"]:
+    try:
+        res = client.models.generate_content(model=model_name, contents=prompt).text.strip()
+        break
+    except Exception as e:
+        print(f"{model_name} busy, trying fallback...", e)
+        time.sleep(5)
+
 parts = [x.strip() for x in res.split("|")]
 title, keyword, script = parts[0], parts[1], parts[2]
+
 
 # 2. Generate Free Neural Voiceover
 async def make_voice():
