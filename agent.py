@@ -12,7 +12,7 @@ prompt = (
     "Return ONLY 3 parts separated by a pipe symbol | : "
     "Catchy Title with #shorts | 1-word visual search keyword | Full spoken narration script"
 )
-res = client.models.generate_content(model="gemini-2.5-flash", contents=prompt).text.strip()
+res = client.models.generate_content(model="gemini-3.8-flash", contents=prompt).text.strip()
 parts = [x.strip() for x in res.split("|")]
 title, keyword, script = parts[0], parts[1], parts[2]
 
