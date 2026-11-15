@@ -22,12 +22,13 @@ async def make_voice():
 asyncio.run(make_voice())
 
 # 3. Fetch HD Stock Video from Pixabay
-pix_key = os.environ["PIXABAY_API_KEY"]
+pix_key = os.environ["PIXABAY_API_KEY"].strip()
 url = f"https://pixabay.com{pix_key}&q={keyword}&per_page=3"
 v_data = requests.get(url).json()
 if not v_data.get("hits"):
     v_data = requests.get(f"https://pixabay.com{pix_key}&q=nature&per_page=3").json()
-video_url = v_data["hits"][0]["videos"]["medium"]["url"]
+video_url = v_data["hits"]["videos"]["medium"]["url"]
+
 open("bg.mp4", "wb").write(requests.get(video_url).content)
 
 # 4. Assemble, Center-Crop to 9:16 & Loop Video
