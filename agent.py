@@ -1,4 +1,4 @@
-import os, time, asyncio
+import os, time, asyncio, edge_tts
 from io import BytesIO
 from PIL import Image, ImageDraw
 from google import genai
@@ -28,10 +28,10 @@ for model_name in ["gemini-3.8-flash", "gemini-3.8-flash-lite"]:
     if res:
         break
 
-parts = [x.strip() for x in res.split("|")]
-title = parts if len(parts) > 0 else "Mind Blowing Psychology Fact #shorts"
-img_prompt = parts if len(parts) > 1 else "Cinematic dark moody abstract brain neural network glowing light, 9:16 vertical"
-script = parts if len(parts) > 2 else parts[-1]
+parts = [x.strip() for x in res.split("|") if x.strip()]
+title = str(parts.pop(0)) if parts else "Mind Blowing Psychology Fact #shorts"
+img_prompt = str(parts.pop(0)) if len(parts) > 1 else "Cinematic dark moody abstract brain neural network glowing light, 9:16 vertical"
+script = str(parts.pop(0)) if parts else title
 
 # 2. Generate Custom 9:16 Vertical Image (with safe built-in fallback)
 try:
@@ -40,7 +40,8 @@ try:
         prompt=img_prompt,
         config=types.GenerateImagesConfig(number_of_images=1, aspect_ratio="9:16")
     )
-    image = Image.open(BytesIO(img_result.generated_images.image.image_bytes))
+    gen_img = next(iter(img_result.generated_images))
+    image = Image.open(BytesIO(gen_img.image.image_bytes))
     image.save("bg.png")
     print("Generated AI background image.")
 except Exception as e:
