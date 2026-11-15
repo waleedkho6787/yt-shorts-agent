@@ -1,6 +1,11 @@
 import os, time, asyncio, edge_tts
 from io import BytesIO
 from PIL import Image, ImageDraw
+
+# Patch Pillow 10+ compatibility for MoviePy 1.0.3
+if not hasattr(Image, "ANTIALIAS"):
+    Image.ANTIALIAS = Image.LANCZOS
+
 from google import genai
 from google.genai import types
 from moviepy.editor import ImageClip, AudioFileClip
@@ -33,7 +38,7 @@ title = str(parts.pop(0)) if parts else "Mind Blowing Psychology Fact #shorts"
 img_prompt = str(parts.pop(0)) if len(parts) > 1 else "Cinematic dark moody abstract brain neural network glowing light, 9:16 vertical"
 script = str(parts.pop(0)) if parts else title
 
-# 2. Generate Custom 9:16 Vertical Image (with safe built-in fallback)
+# 2. Generate Custom 9:16 Vertical Background (with sleek gradient fallback)
 try:
     img_result = client.models.generate_images(
         model="imagen-3.0-generate-002",
@@ -41,11 +46,11 @@ try:
         config=types.GenerateImagesConfig(number_of_images=1, aspect_ratio="9:16")
     )
     gen_img = next(iter(img_result.generated_images))
-    image = Image.open(BytesIO(gen_img.image.image_bytes))
+    image = Image.open(BytesIO(gen_img.image.image_bytes)).resize((1080, 1920), Image.LANCZOS)
     image.save("bg.png")
     print("Generated AI background image.")
 except Exception as e:
-    print("Imagen unavailable, creating sleek gradient background:", e)
+    print("Using sleek gradient background:", e)
     img = Image.new("RGB", (1080, 1920), (15, 20, 35))
     draw = ImageDraw.Draw(img)
     for y in range(1920):
@@ -60,16 +65,10 @@ async def make_voice():
     await edge_tts.Communicate(script, "en-US-ChristopherNeural").save("voice.mp3")
 asyncio.run(make_voice())
 
-# 4. Animate Image with Smooth Cinematic Zoom & Assemble Short
+# 4. Assemble Short (1080x1920)
 audio = AudioFileClip("voice.mp3")
 duration = min(audio.duration, 58.0)
-clip = (
-    ImageClip("bg.png")
-    .set_duration(duration)
-    .resize((1080, 1920))
-    .resize(lambda t: 1 + 0.04 * (t / duration))
-    .set_position("center")
-)
+clip = ImageClip("bg.png").set_duration(duration)
 final = clip.set_audio(audio)
 final.write_videofile("short.mp4", fps=24, codec="libx264", audio_codec="aac")
 
