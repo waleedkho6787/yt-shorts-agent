@@ -23,8 +23,8 @@ prompt = (
 )
 
 res = None
-for model_name in ["gemini-3.8-flash", "gemini-3.8-flash-lite"]:
-    for attempt in range(3):
+for model_name in ["gemini-3.8-flash", "gemini-3.8-pro", "gemini-2.5-flash-lite"]:
+    for attempt in range(2):
         try:
             res = client.models.generate_content(model=model_name, contents=prompt).text.strip()
             break
@@ -34,7 +34,11 @@ for model_name in ["gemini-3.8-flash", "gemini-3.8-flash-lite"]:
     if res:
         break
 
+if not res:
+    res = "Your Brain Deletes 90% Of Your Memories #shorts | BRAIN SECRET | Dark moody glowing human brain neural network, 9:16 vertical | Your brain quietly deletes almost ninety percent of everything you experience today while you sleep. It only keeps moments tied to strong emotion or survival. That means your memories are not a recording. They are a highlight reel edited by your subconscious."
+
 parts = [x.strip() for x in res.split("|") if x.strip()]
+
 title = str(parts.pop(0)) if parts else "Your Brain Is Lying To You #shorts"
 badge = str(parts.pop(0))[:24].upper() if len(parts) > 2 else "PSYCHOLOGY SECRET"
 img_prompt = str(parts.pop(0)) if len(parts) > 1 else "Dark moody glowing human brain neural pathways, cinematic 9:16 vertical art"
