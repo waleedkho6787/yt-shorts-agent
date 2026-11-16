@@ -58,17 +58,11 @@ final = clip.set_audio(audio)
 final.write_videofile("short.mp4", fps=24, codec="libx264", audio_codec="aac")
 
 # 5. Authenticate & Upload Directly to YouTube
-token_endpoint = "https://" + "://googleapis.com" + "/token"
-yt_scope = ["https://" + "://googleapis.com" + "/auth/youtube.upload"]
-
-creds = Credentials(
-    token=None,
-    refresh_token=os.environ["YT_REFRESH_TOKEN"].strip(),
-    token_uri=token_endpoint,
-    client_id=os.environ["YT_CLIENT_ID"].strip(),
-    client_secret=os.environ["YT_CLIENT_SECRET"].strip(),
-    scopes=yt_scope
-)
+creds = Credentials.from_authorized_user_info({
+    "refresh_token": os.environ["YT_REFRESH_TOKEN"].strip(),
+    "client_id": os.environ["YT_CLIENT_ID"].strip(),
+    "client_secret": os.environ["YT_CLIENT_SECRET"].strip(),
+})
 
 youtube = build("youtube", "v3", credentials=creds)
 body = {
